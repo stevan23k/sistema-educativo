@@ -1,0 +1,77 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  password   String
+  name       String?
+  role       Role     @default(STUDENT)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  // relaciones
+  cursosAsTeacher Curso[] @relation("TeacherCursos")
+  matriculas      Matricula[]
+  calificaciones  Calificacion[]
+}
+
+model Curso {
+  id         String    @id @default(uuid())
+  name       String
+  description String?
+  teacherId  String?
+  teacher    User?     @relation("TeacherCursos", fields: [teacherId], references: [id])
+  materias   Materia[]
+  matriculas Matricula[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Materia {
+  id        String   @id @default(uuid())
+  name      String
+  cursoId   String
+  curso     Curso    @relation(fields: [cursoId], references: [id])
+  calificaciones Calificacion[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Matricula {
+  id       String @id @default(uuid())
+  cursoId  String
+  userId   String
+  curso    Curso  @relation(fields: [cursoId], references: [id])
+  user     User   @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Calificacion {
+  id         String   @id @default(uuid())
+  userId     String
+  materiaId  String
+  value      Float
+  description String?
+  user       User     @relation(fields: [userId], references: [id])
+  materia    Materia  @relation(fields: [materiaId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}

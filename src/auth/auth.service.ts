@@ -1,35 +1,38 @@
-import { Injectable } from '@nestjs/common';
-import { Usuarios, Roles } from './auth.model';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+  ConflictException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { JwtService } from '@nestjs/jwt';
 import { LoginDTO } from './DTO/LoginDTO';
 import { RegistroDTO } from './DTO/RegistroDTO';
-import { hashSync, compareSync } from 'bcrypt';
-import { HttpException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
-  constructor(private jwt: JwtService) {}
-  private db: Usuarios[] = [
-    {
-      id: 1,
-      nombres: 'juan camilo',
-      apellidos: 'cardona murillos',
-      email: 'jcardona@mail.com',
-      password: '$2b$10$vkeENHDS/aU0q7239YffL.Oq6OTmiuHeWaQQrM24jJxgGNHE9HMce',
-      rol: Roles.estudiante,
-    },
-  ];
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwt: JwtService,
+  ) {}
 
   async login(user: LoginDTO) {
-    const usuario = this.db.find((usuario) => usuario.email === user.email);
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { email: user.email },
+    });
 
     if (!usuario) {
-      throw new HttpException('Usuario no encontrado', 404);
+      throw new NotFoundException('Usuario no encontrado');
     }
 
-    const password = compareSync(user.password, usuario.password);
-    if (!password) {
-      throw new HttpException('Contraseña incorrecta', 401);
+    const passwordValido = await bcrypt.compare(
+      user.password,
+      usuario.password,
+    );
+
+    if (!passwordValido) {
+      throw new UnauthorizedException('Contraseña incorrecta');
     }
 
     const payload = {
@@ -39,23 +42,39 @@ export class AuthService {
       rol: usuario.rol,
     };
 
-    return { token: await this.jwt.signAsync(payload) };
-  }
-
-  registro(user: RegistroDTO) {
-    const passwordEncrypted = hashSync(user.password, 10);
-    const newUser = {
-      id: this.db.length + 1,
-      ...user,
-      password: passwordEncrypted,
+    return {
+      token: await this.jwt.signAsync(payload),
     };
-
-    this.db.push(newUser);
-
-    return { ok: 'usuario registrado exitosamente', newUser };
   }
 
-  getUsers() {
-    return this.db;
+  async registro(user: RegistroDTO) {
+    const existe = await this.prisma.usuario.findUnique({
+      where: { email: user.email },
+    });
+
+    if (existe) {
+      throw new ConflictException('Este correo ya está registrado');
+    }
+
+    const passwordEncrypted = await bcrypt.hash(user.password, 10);
+
+    const newUser = await this.prisma.usuario.create({
+      data: {
+        nombres: user.nombres,
+        apellidos: user.apellidos,
+        email: user.email,
+        password: passwordEncrypted,
+        rol: user.rol,
+      },
+    });
+
+    return {
+      ok: 'Usuario registrado exitosamente',
+      newUser,
+    };
+  }
+
+  async getUsers() {
+    return await this.prisma.usuario.findMany();
   }
 }
